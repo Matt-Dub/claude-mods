@@ -1,0 +1,20 @@
+{
+  "name": "mods",
+  "owner": {
+    "name": "Matt-Dub"
+  },
+  "plugins": [
+    {
+      "name": "prompt-rewrite",
+      "source": "./prompt-rewrite"
+    },
+    {
+      "name": "relay",
+      "source": "./relay"
+    },
+    {
+      "name": "obsidian-sync",
+      "source": "./obsidian-sync"
+    }
+  ]
+}

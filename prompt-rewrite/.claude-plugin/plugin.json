@@ -1,0 +1,1 @@
+{ "name": "prompt-rewrite", "version": "0.1.0", "description": "Rewrites submitted prompts for clarity before Claude reads them (/rewrite)", "types": "./types/index.d.ts" }
