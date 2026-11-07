@@ -629,7 +629,8 @@ async function refresh($: EngineInterface): Promise<string> {
   try {
     const r = await $.model.fork({ prompt: REFRESH_PROMPT(note.text) })
     if (!r.isAnswered) {
-      return `Page not updated: ${r.reason}.`
+      const why = r.reason === 'nothing-to-fork' ? 'no finished turn in this session yet; run it after working on the project' : r.reason
+      return `Page not updated: ${why}.`
     }
     out = r.text.trim()
   } finally {

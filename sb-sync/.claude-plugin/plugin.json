@@ -1,5 +1,5 @@
 {
   "name": "sb-sync",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Keeps each git project's page in SilverBullet (Projects/) in step with the work done on it"
 }
