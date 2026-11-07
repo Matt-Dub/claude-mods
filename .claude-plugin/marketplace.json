@@ -13,8 +13,12 @@
       "source": "./relay"
     },
     {
-      "name": "obsidian-sync",
-      "source": "./obsidian-sync"
+      "name": "sb-sync",
+      "source": "./sb-sync"
+    },
+    {
+      "name": "brain",
+      "source": "./brain"
     }
   ]
 }
