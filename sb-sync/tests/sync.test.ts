@@ -1,3 +1,4 @@
+import type { CommandRunInput, HttpResponse, On, ProcessRunResult } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import { COMMITS_END, COMMITS_START } from '../hooks/register'
 
@@ -16,6 +17,21 @@ type Opts = {
 const NOTE = 'Projects/BassTone X/BassTone X.md'
 const INDEX_PATH = 'Projects/Projets récents.md'
 const BASE = 'https://sb.test'
+
+const SB_SYNC: CommandRunInput = {
+  command: 'sb-sync',
+  args: '',
+  origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 80 },
+}
+
+const proc = (exitCode: number, stdout = ''): { value: ProcessRunResult } => ({
+  value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+const res = (status: number, text = '', headers: Record<string, string> = {}): { value: HttpResponse } => ({
+  value: { status, ok: status >= 200 && status < 300, headers, text },
+})
 
 const note = (block: string) => `---
 type: Project
@@ -54,9 +70,9 @@ function seed(): Store {
   ])
 }
 
-function engine(on: Parameters<Parameters<typeof test>[1]>[1], o: Opts) {
+function engine(on: On, o: Opts) {
   const puts: string[] = []
-  on('command.register', () => ({ value: undefined }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/repo' }))
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
@@ -72,15 +88,15 @@ function engine(on: Parameters<Parameters<typeof test>[1]>[1], o: Opts) {
   on('process.run', (_, e) => {
     const a = e.argv.slice(3).join(' ')
     if (a.startsWith('rev-parse')) {
-      return { value: { exitCode: 0, stdout: '/repo\n', stderr: '' } }
+      return proc(0, '/repo\n')
     }
     if (a.startsWith('log -5')) {
-      return { value: { exitCode: 0, stdout: '2026-11-07\tbbb2222\tNew work\n2026-11-01\taaa1111\tOld\n', stderr: '' } }
+      return proc(0, '2026-11-07\tbbb2222\tNew work\n2026-11-01\taaa1111\tOld\n')
     }
     if (a.startsWith('merge-base')) {
-      return { value: { exitCode: o.ancestor === false ? 1 : 0, stdout: '', stderr: '' } }
+      return proc(o.ancestor === false ? 1 : 0)
     }
-    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+    return proc(1)
   })
   on('http.fetch', (_, e) => {
     const path = decodeURIComponent(e.url.slice(`${BASE}/.fs/`.length))
@@ -88,35 +104,28 @@ function engine(on: Parameters<Parameters<typeof test>[1]>[1], o: Opts) {
     const page = o.store.get(path)
     if (method === 'GET') {
       if (o.loginPage) {
-        return { value: { status: 200, ok: true, headers: { 'content-type': 'text/html' }, text: '<html>login</html>' } }
+        return res(200, '<html>login</html>', { 'content-type': 'text/html' })
       }
       if (o.getStatus) {
-        return { value: { status: o.getStatus, ok: false, headers: {}, text: '' } }
+        return res(o.getStatus)
       }
       if (!page) {
-        return { value: { status: 404, ok: false, headers: {}, text: 'Not found' } }
+        return res(404, 'Not found')
       }
-      return {
-        value: {
-          status: 200,
-          ok: true,
-          headers: { 'x-silverbullet-revision': `"r${page.rev}"`, 'x-permission': 'rw' },
-          text: page.text,
-        },
-      }
+      return res(200, page.text, { 'x-silverbullet-revision': `"r${page.rev}"`, 'x-permission': 'rw' })
     }
     if (method === 'PUT') {
       o.beforePut?.(path, o.store)
       const cur = o.store.get(path)
       const ifMatch = e.init?.headers?.['If-Match']
       if (ifMatch !== undefined && (!cur || ifMatch !== `"r${cur.rev}"`)) {
-        return { value: { status: 412, ok: false, headers: {}, text: 'Precondition Failed' } }
+        return res(412, 'Precondition Failed')
       }
       puts.push(path)
       o.store.set(path, { text: e.init?.body ?? '', rev: (cur?.rev ?? 0) + 1 })
-      return { value: { status: 200, ok: true, headers: {}, text: '' } }
+      return res(200)
     }
-    return { value: { status: 405, ok: false, headers: {}, text: '' } }
+    return res(405)
   })
 
   return puts
@@ -126,7 +135,7 @@ test('a sync updates the date, the commits block and the index row', async ($, o
   const store = seed()
   const puts = engine(on, { store })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-  const r = await $.command.run({ command: 'sb-sync' })
+  const r = await $.command.run(SB_SYNC)
 
   expect(r.text).toContain('updated note + index')
   expect(puts).toEqual([NOTE, INDEX_PATH])
@@ -151,7 +160,7 @@ test('an edit made in SilverBullet meanwhile is never overwritten', async ($, on
     },
   })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-  const r = await $.command.run({ command: 'sb-sync' })
+  const r = await $.command.run(SB_SYNC)
 
   expect(r.text).toContain('changed in SilverBullet')
   expect(puts).toEqual([])
@@ -167,7 +176,7 @@ for (const [label, o] of [
     const store = seed()
     const puts = engine(on, { store, ...o })
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-    const r = await $.command.run({ command: 'sb-sync' })
+    const r = await $.command.run(SB_SYNC)
 
     expect(r.text).toContain('sb-sync:')
     expect(r.text).not.toContain('/sb-sync new')
@@ -180,7 +189,7 @@ test('a clone that is behind keeps the commits block but still dates the page', 
   store.set(NOTE, { text: note('- 2026-11-08 · Newer elsewhere (`ccc3333`)'), rev: 1 })
   engine(on, { store, ancestor: false })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-  const r = await $.command.run({ command: 'sb-sync' })
+  const r = await $.command.run(SB_SYNC)
 
   expect(r.text).toContain('commits block kept')
   const text = store.get(NOTE)?.text ?? ''
@@ -194,7 +203,7 @@ test('a missing page is reported, not created', async ($, on) => {
   store.delete(NOTE)
   const puts = engine(on, { store })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-  const r = await $.command.run({ command: 'sb-sync' })
+  const r = await $.command.run(SB_SYNC)
 
   expect(r.text).toContain('/sb-sync new')
   expect(puts).toEqual([])
